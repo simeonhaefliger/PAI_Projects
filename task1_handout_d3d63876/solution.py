@@ -36,8 +36,10 @@ class Model(object):
         We already provide a random number generator for reproducibility.
         """
         self.rng = np.random.default_rng(seed=0)
-
-        # TODO: Add custom initialization for your model here if necessary
+        
+        # TODO
+        kernel = DotProduct(sigma_0=18.2) + WhiteKernel(noise_level=223)
+        gpr = GaussianProcessRegressor(kernel=kernel)
 
     def predict(self, x: np.ndarray) -> typing.Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -48,7 +50,9 @@ class Model(object):
             containing your predictions, the GP posterior mean, and the GP posterior stddev (in that order)
         """
 
-        # TODO: Use your GP to estimate the posterior mean and stddev for each location here
+        # TODO
+        gpr.predict(x, return_std=True, return_cov=False)
+        
         gp_mean = np.zeros(x.shape[0], dtype=float)
         gp_std = np.zeros(x.shape[0], dtype=float)
 
@@ -63,8 +67,9 @@ class Model(object):
         :param train_x: Training features as a 2d NumPy float array of shape (NUM_SAMPLES, 2)
         :param train_y: Training pollution concentrations as a 1d NumPy float array of shape (NUM_SAMPLES,)
         """
-
-        # TODO: Fit your model here
+        
+        # TODO
+        gpr.fit(train_x, train_y)
         pass
 
 
