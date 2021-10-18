@@ -3,11 +3,14 @@ import typing
 
 from sklearn.gaussian_process.kernels import *
 import numpy as np
+import pandas as pd
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import KFold
 import matplotlib.pyplot as plt
 from matplotlib import cm
+from scipy.interpolate import griddata
+from scipy.stats import norm
 
 
 # Set `EXTENDED_EVALUATION` to `True` in order to visualize your predictions.
@@ -38,8 +41,16 @@ class Model(object):
         self.rng = np.random.default_rng(seed=0)
         
         # TODO
-        kernel = DotProduct(sigma_0=18.2) + WhiteKernel(noise_level=223)
-        gpr = GaussianProcessRegressor(kernel=kernel)
+        # DotProduct(sigma_0=18.2) + WhiteKernel(noise_level=223)
+        # RBF(length_scale=0.0168)
+        # Matern(length_scale=0.036, nu=0.5)
+        # Matern(length_scale=0.0253, nu=1.5)
+        # Matern(length_scale=0.0223, nu=2.5)
+        # RationalQuadratic(alpha=0.522, length_scale=0.0106)
+        # ExpSineSquared(length_scale=0.000532, periodicity=198)
+        kernel = Matern(length_scale=0.0253, nu=1.5)
+        self.gpr = GaussianProcessRegressor(kernel=kernel)
+                                            #n_restarts_optimizer=100)
 
     def predict(self, x: np.ndarray) -> typing.Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -50,14 +61,18 @@ class Model(object):
             containing your predictions, the GP posterior mean, and the GP posterior stddev (in that order)
         """
 
-        # TODO
-        gpr.predict(x, return_std=True, return_cov=False)
+        # Get mean and standard deviation.
+        predictions = self.gpr.predict(x, return_std=True)
+        gp_mean = predictions[0].ravel()
+        gp_std = predictions[1].ravel()
         
-        gp_mean = np.zeros(x.shape[0], dtype=float)
-        gp_std = np.zeros(x.shape[0], dtype=float)
+        pred_df = pd.DataFrame({'mean':gp_mean, 'sd':gp_std})
 
-        # TODO: Use the GP posterior to form your predictions here
-        predictions = gp_mean
+        pred_df['predictions'] = np.where(pred_df['mean'] >= 35.5,
+                                          pred_df['mean'] + pred_df['sd'] * norm.ppf(20/25),
+                                          pred_df['mean'] + pred_df['sd'] * norm.ppf(1/6))
+        
+        predictions = pred_df['predictions'].to_numpy()
 
         return predictions, gp_mean, gp_std
 
@@ -68,8 +83,14 @@ class Model(object):
         :param train_y: Training pollution concentrations as a 1d NumPy float array of shape (NUM_SAMPLES,)
         """
         
-        # TODO
-        gpr.fit(train_x, train_y)
+        # Reduce data by interpolation
+        grid_x, grid_y = np.mgrid[0:0.9988:50j, 0:0.9988:50j]
+        grid_z = griddata(train_x, train_y, (grid_x, grid_y), method='nearest')
+        x_red = np.array(list(zip(grid_x.ravel(), grid_y.ravel())))
+        y_red = grid_z.ravel()
+        
+        # Fit to reduced data
+        self.gpr.fit(x_red, y_red)
         pass
 
 
