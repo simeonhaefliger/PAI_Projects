@@ -3,10 +3,10 @@ import typing
 
 from sklearn.gaussian_process.kernels import *
 import numpy as np
-import pandas as pd
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import KFold
+from sklearn.kernel_approximation import Nystroem
 import matplotlib.pyplot as plt
 from matplotlib import cm
 from scipy.interpolate import griddata
@@ -48,8 +48,8 @@ class Model(object):
         # Matern(length_scale=0.0223, nu=2.5)
         # RationalQuadratic(alpha=0.522, length_scale=0.0106)
         # ExpSineSquared(length_scale=0.000532, periodicity=198)
-        kernel = Matern(length_scale=0.0253, nu=1.5)
-        self.gpr = GaussianProcessRegressor(kernel=kernel)
+        self.kernel = Matern(length_scale=0.0253, nu=1.5)
+        self.gpr = GaussianProcessRegressor(kernel=self.kernel)
                                             #n_restarts_optimizer=100)
 
     def predict(self, x: np.ndarray) -> typing.Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -65,14 +65,12 @@ class Model(object):
         predictions = self.gpr.predict(x, return_std=True)
         gp_mean = predictions[0].ravel()
         gp_std = predictions[1].ravel()
-        
-        pred_df = pd.DataFrame({'mean':gp_mean, 'sd':gp_std})
 
-        pred_df['predictions'] = np.where(pred_df['mean'] >= 35.5,
-                                          pred_df['mean'] + pred_df['sd'] * norm.ppf(20/25),
-                                          pred_df['mean'] + pred_df['sd'] * norm.ppf(1/6))
-        
-        predictions = pred_df['predictions'].to_numpy()
+        predictions = np.where(gp_mean >= 35.5 - 2 * gp_std,
+                               gp_mean + gp_std * norm.ppf(20/25),
+                               gp_mean + gp_std * norm.ppf(1/6))
+                               
+        predictions = gp_mean
 
         return predictions, gp_mean, gp_std
 
@@ -89,8 +87,11 @@ class Model(object):
         x_red = np.array(list(zip(grid_x.ravel(), grid_y.ravel())))
         y_red = grid_z.ravel()
         
+        # Reduce data using Nystroem
+        feature_map_nystroem = Nystroem(n_components=2500)
+
         # Fit to reduced data
-        self.gpr.fit(x_red, y_red)
+        self.gpr.fit(feature_map_nystroem, train_y)
         pass
 
 
