@@ -48,8 +48,9 @@ class Model(object):
         # Matern(length_scale=0.0223, nu=2.5)
         # RationalQuadratic(alpha=0.522, length_scale=0.0106)
         # ExpSineSquared(length_scale=0.000532, periodicity=198)
-        self.kernel = Matern(length_scale=0.0253, nu=1.5)
-        self.gpr = GaussianProcessRegressor(kernel=self.kernel)
+        self.kernel = Matern(length_scale=0.0297, nu=1.5)
+        self.gpr = GaussianProcessRegressor(kernel=self.kernel,
+                                            alpha = 0.1)
                                             #n_restarts_optimizer=100)
 
     def predict(self, x: np.ndarray) -> typing.Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -70,7 +71,7 @@ class Model(object):
                                gp_mean + gp_std * norm.ppf(20/25),
                                gp_mean + gp_std * norm.ppf(1/6))
                                
-        predictions = gp_mean
+        #predictions = gp_mean
 
         return predictions, gp_mean, gp_std
 
@@ -88,10 +89,10 @@ class Model(object):
         y_red = grid_z.ravel()
         
         # Reduce data using Nystroem
-        feature_map_nystroem = Nystroem(n_components=2500)
+        #feature_map_nystroem = Nystroem(n_components=2500)
 
         # Fit to reduced data
-        self.gpr.fit(feature_map_nystroem, train_y)
+        self.gpr.fit(train_x, train_y)
         pass
 
 
