@@ -40,14 +40,13 @@ class Model(object):
         """
         self.rng = np.random.default_rng(seed=0)
         
-        # TODO
-        # DotProduct(sigma_0=18.2) + WhiteKernel(noise_level=223)
-        # RBF(length_scale=0.0168)
-        # Matern(length_scale=0.036, nu=0.5)
-        # Matern(length_scale=0.0253, nu=1.5)
-        # Matern(length_scale=0.0223, nu=2.5)
-        # RationalQuadratic(alpha=0.522, length_scale=0.0106)
-        # ExpSineSquared(length_scale=0.000532, periodicity=198)
+        # RBF(length_scale=0.0224), Score: 39.216
+        # Matern(length_scale=0.0402, nu=0.5), Score: 52.857
+        # Matern(length_scale=0.0297, nu=1.5), Score: 38.479, 4.138 / 4.149
+        # Matern(length_scale=0.0269, nu=2.5), Score: 38.621
+        # RationalQuadratic(alpha=0.528, length_scale=0.0119), Score: 43.339
+        # ExpSineSquared(length_scale=0.00612, periodicity=23), Score: 39.216
+        # DotProduct(sigma_0=18.2) + WhiteKernel(noise_level=223), Score: 4855.497
         self.kernel = Matern(length_scale=0.0297, nu=1.5)
         self.gpr = GaussianProcessRegressor(kernel=self.kernel,
                                             alpha = 0.1)
@@ -67,7 +66,7 @@ class Model(object):
         gp_mean = predictions[0].ravel()
         gp_std = predictions[1].ravel()
 
-        predictions = np.where(gp_mean >= 35.5 - 2 * gp_std,
+        predictions = np.where(gp_mean >= 35.5 - norm.ppf(20/25) * gp_std,
                                gp_mean + gp_std * norm.ppf(20/25),
                                gp_mean + gp_std * norm.ppf(1/6))
                                
