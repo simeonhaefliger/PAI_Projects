@@ -2,6 +2,7 @@ import os
 import typing
 
 from sklearn.gaussian_process.kernels import *
+from sklearn.cluster import KMeans
 import numpy as np
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.model_selection import cross_val_score
@@ -49,7 +50,8 @@ class Model(object):
         # DotProduct(sigma_0=18.2) + WhiteKernel(noise_level=223), Score: 4855.497
         self.kernel = Matern(length_scale=0.0297, nu=1.5)
         self.gpr = GaussianProcessRegressor(kernel=self.kernel,
-                                            alpha = 0.1)
+                                            alpha = 1e-4,
+                                            normalize_y = False)
                                             #n_restarts_optimizer=100)
 
     def predict(self, x: np.ndarray) -> typing.Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -66,8 +68,8 @@ class Model(object):
         gp_mean = predictions[0].ravel()
         gp_std = predictions[1].ravel()
 
-        predictions = np.where(gp_mean >= 35.5 - norm.ppf(20/25) * gp_std,
-                               gp_mean + gp_std * norm.ppf(20/25),
+        predictions = np.where(gp_mean >= 35.5 - norm.ppf(20/21) * gp_std,
+                               gp_mean + gp_std * norm.ppf(20/21),
                                gp_mean + gp_std * norm.ppf(1/6))
                                
         #predictions = gp_mean
@@ -87,11 +89,21 @@ class Model(object):
         x_red = np.array(list(zip(grid_x.ravel(), grid_y.ravel())))
         y_red = grid_z.ravel()
         
-        # Reduce data using Nystroem
-        #feature_map_nystroem = Nystroem(n_components=2500)
+        #init_k_means_centrodis = np.array([grid_x.ravel(),
+        #                                   grid_y.ravel(),
+        #                                   grid_z.ravel()]).T
+        
+        # Make data into the same array
+        #train_y_reshaped = train_y.reshape((train_y.ravel().size, 1))
+        #train_xy = np.append(train_x, train_y_reshaped, axis=1)
+        
+        # Reduce data using K-means
+        #kmeans = KMeans(n_clusters=2500,
+        #                init = init_k_means_centrodis,
+        #                random_state=0).fit(train_xy)
 
-        # Fit to reduced data
-        self.gpr.fit(train_x, train_y)
+        # Fit to reduced k-menas data
+        self.gpr.fit(x_red, y_red)
         pass
 
 
