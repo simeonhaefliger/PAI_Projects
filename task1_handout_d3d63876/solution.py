@@ -48,11 +48,9 @@ class Model(object):
         # RationalQuadratic(alpha=0.528, length_scale=0.0119), Score: 43.339
         # ExpSineSquared(length_scale=0.00612, periodicity=23), Score: 39.216
         # DotProduct(sigma_0=18.2) + WhiteKernel(noise_level=223), Score: 4855.497
-        self.kernel = Matern(length_scale=0.0297, nu=1.5)
+        self.kernel = Matern(length_scale=0.0247, nu=1.5)
         self.gpr = GaussianProcessRegressor(kernel=self.kernel,
-                                            alpha = 1e-4,
-                                            normalize_y = False)
-                                            #n_restarts_optimizer=100)
+                                            alpha = 0.1)
 
     def predict(self, x: np.ndarray) -> typing.Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -71,8 +69,6 @@ class Model(object):
         predictions = np.where(gp_mean >= 35.5 - norm.ppf(20/21) * gp_std,
                                gp_mean + gp_std * norm.ppf(20/21),
                                gp_mean + gp_std * norm.ppf(1/6))
-                               
-        #predictions = gp_mean
 
         return predictions, gp_mean, gp_std
 
@@ -83,27 +79,14 @@ class Model(object):
         :param train_y: Training pollution concentrations as a 1d NumPy float array of shape (NUM_SAMPLES,)
         """
         
-        # Reduce data by interpolation
+        # Reduce data by interpolation to test kenrels
         grid_x, grid_y = np.mgrid[0:0.9988:50j, 0:0.9988:50j]
         grid_z = griddata(train_x, train_y, (grid_x, grid_y), method='nearest')
         x_red = np.array(list(zip(grid_x.ravel(), grid_y.ravel())))
         y_red = grid_z.ravel()
-        
-        #init_k_means_centrodis = np.array([grid_x.ravel(),
-        #                                   grid_y.ravel(),
-        #                                   grid_z.ravel()]).T
-        
-        # Make data into the same array
-        #train_y_reshaped = train_y.reshape((train_y.ravel().size, 1))
-        #train_xy = np.append(train_x, train_y_reshaped, axis=1)
-        
-        # Reduce data using K-means
-        #kmeans = KMeans(n_clusters=2500,
-        #                init = init_k_means_centrodis,
-        #                random_state=0).fit(train_xy)
 
         # Fit to reduced k-menas data
-        self.gpr.fit(x_red, y_red)
+        self.gpr.fit(train_x, train_y)
         pass
 
 
