@@ -6,8 +6,11 @@ import numpy as np
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import KFold
+from sklearn.kernel_approximation import Nystroem
 import matplotlib.pyplot as plt
 from matplotlib import cm
+from scipy.interpolate import griddata
+from scipy.stats import norm
 
 
 # Set `EXTENDED_EVALUATION` to `True` in order to visualize your predictions.
@@ -36,8 +39,17 @@ class Model(object):
         We already provide a random number generator for reproducibility.
         """
         self.rng = np.random.default_rng(seed=0)
-
-        # TODO: Add custom initialization for your model here if necessary
+        
+        # RBF(length_scale=0.0224), Score: 39.216
+        # Matern(length_scale=0.0402, nu=0.5), Score: 52.857
+        # Matern(length_scale=0.0297, nu=1.5), Score: 38.479, 4.138 / 4.149
+        # Matern(length_scale=0.0269, nu=2.5), Score: 38.621
+        # RationalQuadratic(alpha=0.528, length_scale=0.0119), Score: 43.339
+        # ExpSineSquared(length_scale=0.00612, periodicity=23), Score: 39.216
+        # DotProduct(sigma_0=18.2) + WhiteKernel(noise_level=223), Score: 4855.497
+        self.kernel = Matern(length_scale=0.297, nu=1.5)
+        self.gpr = GaussianProcessRegressor(kernel=self.kernel,
+                                            alpha = 0.1)
 
     def predict(self, x: np.ndarray) -> typing.Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -48,12 +60,14 @@ class Model(object):
             containing your predictions, the GP posterior mean, and the GP posterior stddev (in that order)
         """
 
-        # TODO: Use your GP to estimate the posterior mean and stddev for each location here
-        gp_mean = np.zeros(x.shape[0], dtype=float)
-        gp_std = np.zeros(x.shape[0], dtype=float)
+        # Get mean and standard deviation.
+        predictions = self.gpr.predict(x, return_std=True)
+        gp_mean = predictions[0].ravel()
+        gp_std = predictions[1].ravel()
 
-        # TODO: Use the GP posterior to form your predictions here
-        predictions = gp_mean
+        predictions = np.where(gp_mean >= 35.5 - 2 * gp_std,
+                               gp_mean + gp_std * norm.ppf(20/21),
+                               gp_mean + gp_std * norm.ppf(1/6))
 
         return predictions, gp_mean, gp_std
 
@@ -63,8 +77,15 @@ class Model(object):
         :param train_x: Training features as a 2d NumPy float array of shape (NUM_SAMPLES, 2)
         :param train_y: Training pollution concentrations as a 1d NumPy float array of shape (NUM_SAMPLES,)
         """
+        
+        # Reduce data by interpolation to test kenrels
+        # grid_x, grid_y = np.mgrid[0:0.9988:50j, 0:0.9988:50j]
+        # grid_z = griddata(train_x, train_y, (grid_x, grid_y), method='nearest')
+        # x_red = np.array(list(zip(grid_x.ravel(), grid_y.ravel())))
+        # y_red = grid_z.ravel()
 
-        # TODO: Fit your model here
+        # Fit to reduced k-menas data
+        self.gpr.fit(train_x, train_y)
         pass
 
 
