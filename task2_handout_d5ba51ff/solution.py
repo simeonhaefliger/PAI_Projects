@@ -124,9 +124,7 @@ class Model(object):
                     # Calculate the loss
                     # We use the negative log likelihood as the loss
                     # Combining nll_loss with a log_softmax is better for numeric stability
-                    loss = log_variational_posterior -
-                           log_prior
-                           F.nll_loss(F.log_softmax(current_logits, dim=1), batch_y, reduction='sum')
+                    loss = log_variational_posterior - log_prior + F.nll_loss(F.log_softmax(current_logits, dim=1), batch_y, reduction='sum')
                     
                     # Backpropagate to get the gradients
                     loss.backward()
@@ -206,8 +204,8 @@ class BayesianLayer(nn.Module):
         #      torch.nn.Parameter(torch.ones((out_features, in_features)))
         #  )
         self.weights_var_posterior = MultivariateDiagonalGaussian(
-            torch.nn.Parameter(torch.zeros((out_features, in_features))),
-            torch.nn.Parameter(torch.ones((out_features, in_features)))
+            torch.nn.Parameter(torch.zeros((self.out_features, self.in_features))),
+            torch.nn.Parameter(torch.ones((self.out_features, self.in_features)))
         )
 
         assert isinstance(self.weights_var_posterior, ParameterDistribution)
@@ -217,14 +215,14 @@ class BayesianLayer(nn.Module):
             # TODO: As for the weights, create the bias variational posterior instance here.
             #  Make sure to follow the same rules as for the weight variational posterior.
             self.bias_var_posterior = MultivariateDiagonalGaussian(
-                torch.nn.Parameter(torch.zeros((out_features, in_features))),
-                torch.nn.Parameter(torch.ones((out_features, in_features)))
+                torch.nn.Parameter(torch.zeros((self.out_features))),
+                torch.nn.Parameter(torch.ones((self.out_features)))
             )
             assert isinstance(self.bias_var_posterior, ParameterDistribution)
             assert any(True for _ in self.bias_var_posterior.parameters()), 'Bias posterior must have parameters'
         else:
             self.bias_var_posterior = None
-
+            
     def forward(self, inputs: torch.Tensor):
         """
         Perform one forward pass through this layer.
@@ -252,7 +250,6 @@ class BayesianLayer(nn.Module):
             bias = None
             log_variational_posterior = self.weights_var_posterior.log_likelihood(weights)
             log_prior = self.prior.log_likelihood(weights)
-        
         
         return F.linear(inputs, weights, bias), log_prior, log_variational_posterior
 
@@ -345,7 +342,7 @@ class UnivariateGaussian(ParameterDistribution):
 
     def log_likelihood(self, values: torch.Tensor) -> torch.Tensor:
         # TODO: Implement this
-        return torch.distributions.Normal(self.mu, self.sigma).log_prob(values)
+        return torch.distributions.Normal(self.mu, self.sigma).log_prob(values).sum()
 
     def sample(self) -> torch.Tensor:
         # TODO: Implement this
