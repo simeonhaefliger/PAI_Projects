@@ -118,6 +118,18 @@ class Model(object):
                     assert isinstance(self.network, BayesNet)
 
                     # TODO: Implement Bayes by backprop training here
+                    # Perform forward pass
+                    current_logits, log_prior, log_variational_posterior  = self.network(batch_x)
+
+                    # Calculate the loss
+                    # We use the negative log likelihood as the loss
+                    # Combining nll_loss with a log_softmax is better for numeric stability
+                    loss = log_variational_posterior -
+                           log_prior
+                           F.nll_loss(F.log_softmax(current_logits, dim=1), batch_y, reduction='sum')
+                    
+                    # Backpropagate to get the gradients
+                    loss.backward()
 
                 self.optimizer.step()
 
@@ -179,7 +191,7 @@ class BayesianLayer(nn.Module):
         #  You can create constants using torch.tensor(...).
         #  Do NOT use torch.Parameter(...) here since the prior should not be optimized!
         #  Example: self.prior = MyPrior(torch.tensor(0.0), torch.tensor(1.0))
-        self.prior = None
+        self.prior = UnivariateGaussian(torch.tensor(0.0), torch.tensor(1.0))
         assert isinstance(self.prior, ParameterDistribution)
         assert not any(True for _ in self.prior.parameters()), 'Prior cannot have parameters'
 
@@ -193,7 +205,10 @@ class BayesianLayer(nn.Module):
         #      torch.nn.Parameter(torch.zeros((out_features, in_features))),
         #      torch.nn.Parameter(torch.ones((out_features, in_features)))
         #  )
-        self.weights_var_posterior = None
+        self.weights_var_posterior = MultivariateDiagonalGaussian(
+            torch.nn.Parameter(torch.zeros((out_features, in_features))),
+            torch.nn.Parameter(torch.ones((out_features, in_features)))
+        )
 
         assert isinstance(self.weights_var_posterior, ParameterDistribution)
         assert any(True for _ in self.weights_var_posterior.parameters()), 'Weight posterior must have parameters'
@@ -201,7 +216,10 @@ class BayesianLayer(nn.Module):
         if self.use_bias:
             # TODO: As for the weights, create the bias variational posterior instance here.
             #  Make sure to follow the same rules as for the weight variational posterior.
-            self.bias_var_posterior = None
+            self.bias_var_posterior = MultivariateDiagonalGaussian(
+                torch.nn.Parameter(torch.zeros((out_features, in_features))),
+                torch.nn.Parameter(torch.ones((out_features, in_features)))
+            )
             assert isinstance(self.bias_var_posterior, ParameterDistribution)
             assert any(True for _ in self.bias_var_posterior.parameters()), 'Bias posterior must have parameters'
         else:
@@ -223,11 +241,19 @@ class BayesianLayer(nn.Module):
         # TODO: Perform a forward pass as described in this method's docstring.
         #  Make sure to check whether `self.use_bias` is True,
         #  and if yes, include the bias as well.
-        log_prior = torch.tensor(0.0)
-        log_variational_posterior = torch.tensor(0.0)
-        weights = None
-        bias = None
-
+        weights = self.weights_var_posterior.sample()
+        
+        if self.use_bias:
+            bias = self.bias_var_posterior.sample()
+            log_variational_posterior = self.weights_var_posterior.log_likelihood(weights) + self.bias_var_posterior.log_likelihood(bias)
+            log_prior = self.prior.log_likelihood(weights) + self.prior.log_likelihood(bias)
+        
+        else:
+            bias = None
+            log_variational_posterior = self.weights_var_posterior.log_likelihood(weights)
+            log_prior = self.prior.log_likelihood(weights)
+        
+        
         return F.linear(inputs, weights, bias), log_prior, log_variational_posterior
 
 
@@ -271,9 +297,19 @@ class BayesNet(nn.Module):
         # TODO: Perform a full pass through your BayesNet as described in this method's docstring.
         #  You can look at DenseNet to get an idea how a forward pass might look like.
         #  Don't forget to apply your activation function in between BayesianLayers!
+        current_features = x
         log_prior = torch.tensor(0.0)
         log_variational_posterior = torch.tensor(0.0)
-        output_features = None
+
+        for idx, current_layer in enumerate(self.layers):
+            new_features, new_log_prior, new_log_variational_posterior  = current_layer(current_features)
+            if idx < len(self.layers) - 1:
+                new_features = self.activation(new_features)
+            current_features = new_features
+            log_prior =+ new_log_prior
+            log_variational_posterior =+ new_log_variational_posterior
+            
+        output_features = new_features
 
         return output_features, log_prior, log_variational_posterior
 
@@ -309,11 +345,12 @@ class UnivariateGaussian(ParameterDistribution):
 
     def log_likelihood(self, values: torch.Tensor) -> torch.Tensor:
         # TODO: Implement this
-        return 0.0
+        return torch.distributions.Normal(self.mu, self.sigma).log_prob(values)
 
     def sample(self) -> torch.Tensor:
         # TODO: Implement this
-        raise NotImplementedError()
+        return torch.normal(self.mu, self.sigma)
+        #raise NotImplementedError()
 
 
 class MultivariateDiagonalGaussian(ParameterDistribution):
@@ -333,11 +370,13 @@ class MultivariateDiagonalGaussian(ParameterDistribution):
 
     def log_likelihood(self, values: torch.Tensor) -> torch.Tensor:
         # TODO: Implement this
-        return 0.0
+        return torch.distributions.Normal(self.mu.data, torch.log(1 + torch.exp(self.rho))).log_prob(values).sum()
 
+    
     def sample(self) -> torch.Tensor:
         # TODO: Implement this
-        raise NotImplementedError()
+        return torch.normal(self.mu.data, torch.log(1 + torch.exp(self.rho)))
+        #raise NotImplementedError()
 
 
 def evaluate(model: Model, eval_loader: torch.utils.data.DataLoader, data_dir: str, output_dir: str):
