@@ -189,8 +189,8 @@ class BayesianLayer(nn.Module):
 
     PRIOR_MU = 0
     PRIOR_PI = 0.5
-    PRIOR_SIGMA_1 = 0.1
-    PRIOR_SIGMA_2 = 0.001
+    PRIOR_SIGMA_1 = 1
+    PRIOR_SIGMA_2 = 0.0001
 
     WEIGHT_MU_HIGH = 0
     WEIGHT_MU_LOW = 0
