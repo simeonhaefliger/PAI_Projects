@@ -128,10 +128,10 @@ class Model(object):
                     pred = F.log_softmax(current_logits, dim=1)
 
                     # Pi_i denotes the weight of the i-th batch
-                    pi_i = 1. / num_batches  # 0.002136752136752137
+                    # pi_i = 1. / num_batches  # 0.002136752136752137
 
                     # Blundell et al. 2015 use this scheme
-                    # pi_i = math.pow(2, num_batches - batch_idx - 1) / (math.pow(2, num_batches) - 1)
+                    pi_i = math.pow(2, num_batches - batch_idx - 1) / (math.pow(2, num_batches) - 1)
                     
                     loss = pi_i * (log_variational_posterior - log_prior) + F.nll_loss(pred, batch_y, reduction='sum')
 
