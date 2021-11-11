@@ -11,7 +11,7 @@
             "program": "${workspaceFolder}/task2_handout_d5ba51ff/solution_santi.py",
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/task2_handout_d5ba51ff/"
-        }
+        },
         {
             "name": "Run Solution",
             "type": "python",
