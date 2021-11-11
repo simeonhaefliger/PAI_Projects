@@ -1,8 +1,6 @@
 import os
 import typing
-from unicodedata import name
 
-import math
 import numpy as np
 import torch
 import torch.optim
@@ -11,6 +9,7 @@ from sklearn.metrics import roc_auc_score, average_precision_score
 from torch import nn
 from torch.nn import functional as F
 from tqdm import trange
+
 from util import ece, ParameterDistribution
 
 # Set `EXTENDED_EVALUATION` to `True` in order to visualize your predictions.
@@ -110,8 +109,7 @@ class Model(object):
                     # Calculate the loss
                     # We use the negative log likelihood as the loss
                     # Combining nll_loss with a log_softmax is better for numeric stability
-                    pred = F.log_softmax(current_logits, dim=1) #SHA
-                    loss = F.nll_loss(pred , batch_y, reduction='sum') #SHA
+                    loss = F.nll_loss(F.log_softmax(current_logits, dim=1), batch_y, reduction='sum')
 
                     # Backpropagate to get the gradients
                     loss.backward()
@@ -120,21 +118,16 @@ class Model(object):
                     assert isinstance(self.network, BayesNet)
 
                     # TODO: Implement Bayes by backprop training here
-
                     # Perform forward pass
-                    current_logits, log_prior, log_variational_posterior = self.network(batch_x)
+                    current_logits, log_prior, log_variational_posterior  = self.network(batch_x)
 
                     # Calculate the loss
-                    # variational posterior and prior need weighting by number of badges
-                    pred = F.log_softmax(current_logits, dim=1)
-                    loss = (log_variational_posterior - log_prior)/(num_batches) + F.nll_loss(pred, batch_y, reduction='sum')
-
+                    # We use the negative log likelihood as the loss
+                    # Combining nll_loss with a log_softmax is better for numeric stability
+                    loss = log_variational_posterior - log_prior + F.nll_loss(F.log_softmax(current_logits, dim=1), batch_y, reduction='sum')
+                    
+                    # Backpropagate to get the gradients
                     loss.backward()
-                   
-                    # for param in self.network.parameters(): #named_parameters():
-                    #     print(F"Param {param.data.shape} has gradient with mean {torch.mean(param.grad)} and var {torch.var(param.grad)}")
-
-                    # ---
 
                 self.optimizer.step()
 
@@ -178,21 +171,6 @@ class BayesianLayer(nn.Module):
     It maintains a prior and variational posterior for the weights (and biases)
     and uses sampling to approximate the gradients via Bayes by backprop.
     """
-
-    PRIOR_MU = 0
-    PRIOR_SIGMA = 1
-
-    WEIGHT_MU_HIGH = 0
-    WEIGHT_MU_LOW = 0
-    WEIGHT_RHO_HIGH = math.log(math.exp(0.1) - 1)
-    WEIGHT_RHO_LOW = math.log(math.exp(0.01) - 1)
-
-    BIAS_MU_HIGH = 0
-    BIAS_MU_LOW = 0
-    BIAS_RHO_HIGH = math.log(math.exp(0.1) - 1)
-    BIAS_RHO_LOW = math.log(math.exp(0.01) - 1)
-
-
     def __init__(self, in_features: int, out_features: int, bias: bool = True):
         """
         Create a BayesianLayer.
@@ -211,12 +189,7 @@ class BayesianLayer(nn.Module):
         #  You can create constants using torch.tensor(...).
         #  Do NOT use torch.Parameter(...) here since the prior should not be optimized!
         #  Example: self.prior = MyPrior(torch.tensor(0.0), torch.tensor(1.0))
-        # self.prior = None
-
-        self.prior = UnivariateGaussian(torch.tensor(self.PRIOR_MU), torch.tensor(self.PRIOR_SIGMA))
-
-        # ---
-
+        self.prior = UnivariateGaussian(torch.tensor(0.0), torch.tensor(1.0))
         assert isinstance(self.prior, ParameterDistribution)
         assert not any(True for _ in self.prior.parameters()), 'Prior cannot have parameters'
 
@@ -230,15 +203,10 @@ class BayesianLayer(nn.Module):
         #      torch.nn.Parameter(torch.zeros((out_features, in_features))),
         #      torch.nn.Parameter(torch.ones((out_features, in_features)))
         #  )
-        # self.weights_var_posterior = None
-
-        
         self.weights_var_posterior = MultivariateDiagonalGaussian(
-            torch.nn.Parameter(torch.Tensor(out_features, in_features).uniform_(self.WEIGHT_MU_LOW, self.WEIGHT_MU_HIGH)),
-            torch.nn.Parameter(torch.Tensor(out_features, in_features).uniform_(self.WEIGHT_RHO_LOW, self.WEIGHT_RHO_HIGH))
+            torch.nn.Parameter(torch.zeros((self.out_features, self.in_features))),
+            torch.nn.Parameter(torch.ones((self.out_features, self.in_features)))
         )
-
-        # ---
 
         assert isinstance(self.weights_var_posterior, ParameterDistribution)
         assert any(True for _ in self.weights_var_posterior.parameters()), 'Weight posterior must have parameters'
@@ -246,19 +214,15 @@ class BayesianLayer(nn.Module):
         if self.use_bias:
             # TODO: As for the weights, create the bias variational posterior instance here.
             #  Make sure to follow the same rules as for the weight variational posterior.
-            # self.bias_var_posterior = None
-
             self.bias_var_posterior = MultivariateDiagonalGaussian(
-                torch.nn.Parameter(torch.Tensor(out_features).uniform_(self.BIAS_MU_LOW, self.BIAS_MU_HIGH)),
-                torch.nn.Parameter(torch.Tensor(out_features).uniform_(self.BIAS_RHO_LOW, self.BIAS_RHO_HIGH))
+                torch.nn.Parameter(torch.zeros((self.out_features))),
+                torch.nn.Parameter(torch.ones((self.out_features)))
             )
-            # ---
-
             assert isinstance(self.bias_var_posterior, ParameterDistribution)
             assert any(True for _ in self.bias_var_posterior.parameters()), 'Bias posterior must have parameters'
         else:
             self.bias_var_posterior = None
-
+            
     def forward(self, inputs: torch.Tensor):
         """
         Perform one forward pass through this layer.
@@ -275,27 +239,19 @@ class BayesianLayer(nn.Module):
         # TODO: Perform a forward pass as described in this method's docstring.
         #  Make sure to check whether `self.use_bias` is True,
         #  and if yes, include the bias as well.
-        # log_prior = torch.tensor(0.0)
-        # log_variational_posterior = torch.tensor(0.0)
-        # weights = None
-        # bias = None
-
         weights = self.weights_var_posterior.sample()
-
-        log_variational_posterior = self.weights_var_posterior.log_likelihood(weights)
-        log_prior = self.prior.log_likelihood(weights)
-
-        if not self.use_bias:
-            return F.linear(inputs, weights, None), log_prior, log_variational_posterior
-
-        bias = self.bias_var_posterior.sample()
-
-        log_variational_posterior += self.bias_var_posterior.log_likelihood(bias)
-        log_prior += self.prior.log_likelihood(bias)
-
-        # ---
+        
+        if self.use_bias:
+            bias = self.bias_var_posterior.sample()
+            log_variational_posterior = self.weights_var_posterior.log_likelihood(weights) + self.bias_var_posterior.log_likelihood(bias)
+            log_prior = self.prior.log_likelihood(weights) + self.prior.log_likelihood(bias)
+        
+        else:
+            bias = None
+            log_variational_posterior = self.weights_var_posterior.log_likelihood(weights)
+            log_prior = self.prior.log_likelihood(weights)
+        
         return F.linear(inputs, weights, bias), log_prior, log_variational_posterior
-
 
 
 class BayesNet(nn.Module):
@@ -338,23 +294,19 @@ class BayesNet(nn.Module):
         # TODO: Perform a full pass through your BayesNet as described in this method's docstring.
         #  You can look at DenseNet to get an idea how a forward pass might look like.
         #  Don't forget to apply your activation function in between BayesianLayers!
-        # log_prior = torch.tensor(0.0)
-        # log_variational_posterior = torch.tensor(0.0)
-        # output_features = None
-
-        output_features = x
+        current_features = x
         log_prior = torch.tensor(0.0)
         log_variational_posterior = torch.tensor(0.0)
 
         for idx, current_layer in enumerate(self.layers):
-            output_features, current_layer_log_prior, current_layer_log_variational_posterior  = current_layer(output_features)
-            log_prior += current_layer_log_prior
-            log_variational_posterior += current_layer_log_variational_posterior
-
+            new_features, new_log_prior, new_log_variational_posterior  = current_layer(current_features)
             if idx < len(self.layers) - 1:
-                output_features = self.activation(output_features)
-
-        # ---
+                new_features = self.activation(new_features)
+            current_features = new_features
+            log_prior =+ new_log_prior
+            log_variational_posterior =+ new_log_variational_posterior
+            
+        output_features = new_features
 
         return output_features, log_prior, log_variational_posterior
 
@@ -388,19 +340,14 @@ class UnivariateGaussian(ParameterDistribution):
         self.mu = mu
         self.sigma = sigma
 
-        #SHA
-        self.dist = torch.distributions.Normal(self.mu, self.sigma)
-
     def log_likelihood(self, values: torch.Tensor) -> torch.Tensor:
         # TODO: Implement this
-        # return torch.distributions.Normal(self.mu, self.sigma).log_prob(values).sum()
-
-        # speed up (source: torch.distributions.Normal)
-        return (-math.log(math.sqrt(2 * math.pi)) - torch.log(self.sigma) - ((values - self.mu) ** 2) / (2 * self.sigma ** 2)).sum()
+        return torch.distributions.Normal(self.mu, self.sigma).log_prob(values).sum()
 
     def sample(self) -> torch.Tensor:
         # TODO: Implement this
-        return self.mu + self.sigma * torch.randn_like(self.mu)
+        return torch.normal(self.mu, self.sigma)
+        #raise NotImplementedError()
 
 
 class MultivariateDiagonalGaussian(ParameterDistribution):
@@ -420,17 +367,13 @@ class MultivariateDiagonalGaussian(ParameterDistribution):
 
     def log_likelihood(self, values: torch.Tensor) -> torch.Tensor:
         # TODO: Implement this
-        sigma = torch.log(1 + torch.exp(self.rho))
-        # return torch.distributions.Normal(self.mu, sigma).log_prob(values).sum()
+        return torch.distributions.Normal(self.mu.data, torch.log(1 + torch.exp(self.rho))).log_prob(values).sum()
 
-        # speed up (source: torch.distributions.Normal)
-        return (-math.log(math.sqrt(2 * math.pi)) - torch.log(sigma) - ((values - self.mu) ** 2) / (2 * sigma ** 2)).sum()
-
+    
     def sample(self) -> torch.Tensor:
         # TODO: Implement this
-        sigma = torch.log(1 + torch.exp(self.rho))
-        return self.mu + sigma * torch.randn_like(self.mu)
-
+        return torch.normal(self.mu.data, torch.log(1 + torch.exp(self.rho)))
+        #raise NotImplementedError()
 
 
 def evaluate(model: Model, eval_loader: torch.utils.data.DataLoader, data_dir: str, output_dir: str):
@@ -618,11 +561,11 @@ class DenseNet(nn.Module):
 
 
 def main():
-    # raise RuntimeError(
-    #     'This main method is for illustrative purposes only and will NEVER be called by the checker!\n'
-    #     'The checker always calls run_solution directly.\n'
-    #     'Please implement your solution exclusively in the methods and classes mentioned in the task description.'
-    # )
+    raise RuntimeError(
+        'This main method is for illustrative purposes only and will NEVER be called by the checker!\n'
+        'The checker always calls run_solution directly.\n'
+        'Please implement your solution exclusively in the methods and classes mentioned in the task description.'
+    )
 
     # Load training data
     data_dir = os.curdir
