@@ -124,10 +124,18 @@ class Model(object):
                     # Perform forward pass
                     current_logits, log_prior, log_variational_posterior = self.network(batch_x)
 
-                    # Calculate the loss
-                    # variational posterior and prior need weighting by number of badges
+                    # Calculate the loss based on softmax
                     pred = F.log_softmax(current_logits, dim=1)
-                    loss = (log_variational_posterior - log_prior)/(num_batches) + F.nll_loss(pred, batch_y, reduction='sum')
+
+                    # Pi_i denotes the weight of the i-th batch
+                    pi_i = 1. / num_batches  # 0.002136752136752137
+
+                    # Blundell et al. 2015 use this scheme
+                    # pi_i = math.pow(2, num_batches - batch_idx - 1) / (math.pow(2, num_batches) - 1)
+                    
+                    loss = pi_i * (log_variational_posterior - log_prior) + F.nll_loss(pred, batch_y, reduction='sum')
+
+
 
                     loss.backward()
                    
@@ -180,7 +188,9 @@ class BayesianLayer(nn.Module):
     """
 
     PRIOR_MU = 0
-    PRIOR_SIGMA = 1
+    PRIOR_PI = 0.5
+    PRIOR_SIGMA_1 = 0.1
+    PRIOR_SIGMA_2 = 0.001
 
     WEIGHT_MU_HIGH = 0
     WEIGHT_MU_LOW = 0
@@ -213,7 +223,8 @@ class BayesianLayer(nn.Module):
         #  Example: self.prior = MyPrior(torch.tensor(0.0), torch.tensor(1.0))
         # self.prior = None
 
-        self.prior = UnivariateGaussian(torch.tensor(self.PRIOR_MU), torch.tensor(self.PRIOR_SIGMA))
+        # self.prior = UnivariateGaussian(torch.tensor(self.PRIOR_MU), torch.tensor(self.PRIOR_SIGMA_1))
+        self.prior = MixedUnivariateGaussian(torch.tensor(self.PRIOR_MU), torch.tensor(self.PRIOR_PI), torch.tensor(self.PRIOR_SIGMA_1), torch.tensor(self.PRIOR_SIGMA_2))
 
         # ---
 
@@ -388,9 +399,6 @@ class UnivariateGaussian(ParameterDistribution):
         self.mu = mu
         self.sigma = sigma
 
-        #SHA
-        self.dist = torch.distributions.Normal(self.mu, self.sigma)
-
     def log_likelihood(self, values: torch.Tensor) -> torch.Tensor:
         # TODO: Implement this
         # return torch.distributions.Normal(self.mu, self.sigma).log_prob(values).sum()
@@ -401,6 +409,48 @@ class UnivariateGaussian(ParameterDistribution):
     def sample(self) -> torch.Tensor:
         # TODO: Implement this
         return self.mu + self.sigma * torch.randn_like(self.mu)
+
+
+class MixedUnivariateGaussian(ParameterDistribution):
+    """
+    Univariate Gaussian distribution.
+    For multivariate data, this assumes all elements to be i.i.d.
+    """
+
+    def __init__(self, mu: torch.Tensor, pi: torch.Tensor, sigma_1: torch.Tensor, sigma_2: torch.Tensor):
+        super(MixedUnivariateGaussian, self).__init__()  # always make sure to include the super-class init call!
+        assert mu.size() == () 
+        assert sigma_1.size() == ()
+        assert sigma_2.size() == ()
+        assert sigma_1 > 0
+        assert sigma_2 > 0
+        assert pi >= 0 and pi <= 1
+
+        self.pi = pi
+        self.mu = mu
+        self.sigma_1 = sigma_1
+        self.sigma_2 = sigma_2
+
+        #SHA
+
+    @property
+    def dist_1(self):
+        return torch.distributions.Normal(self.mu, self.sigma_1)
+
+    @property
+    def dist_2(self):
+        return torch.distributions.Normal(self.mu, self.sigma_2)
+
+    def log_likelihood(self, values: torch.Tensor) -> torch.Tensor:
+        # TODO: Implement this
+        return torch.log(self.pi * torch.exp(self.dist_1.log_prob(values)) + (1. - self.pi) + torch.exp(self.dist_2.log_prob(values))).sum()
+
+        # speed up (source: torch.distributions.Normal)
+        # return (-math.log(math.sqrt(2 * math.pi)) - torch.log(self.sigma) - ((values - self.mu) ** 2) / (2 * self.sigma ** 2)).sum()
+
+    def sample(self) -> torch.Tensor:
+        # TODO: Implement this
+        return self.pi * (self.mu + self.sigma_1 * torch.randn_like(self.mu)) + (1. - self.pi) * (self.mu + self.sigma_2 * torch.randn_like(self.mu))
 
 
 class MultivariateDiagonalGaussian(ParameterDistribution):
