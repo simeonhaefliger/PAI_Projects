@@ -223,8 +223,10 @@ class BayesianLayer(nn.Module):
         #  Example: self.prior = MyPrior(torch.tensor(0.0), torch.tensor(1.0))
         # self.prior = None
 
-        # self.prior = UnivariateGaussian(torch.tensor(self.PRIOR_MU), torch.tensor(self.PRIOR_SIGMA_1))
-        self.prior = MixedUnivariateGaussian(torch.tensor(self.PRIOR_MU), torch.tensor(self.PRIOR_PI), torch.tensor(self.PRIOR_SIGMA_1), torch.tensor(self.PRIOR_SIGMA_2))
+        if(self.PRIOR_SIGMA_1 == self.PRIOR_SIGMA_2):
+            self.prior = UnivariateGaussian(torch.tensor(self.PRIOR_MU), torch.tensor(self.PRIOR_SIGMA_1))
+        else:
+            self.prior = MixedUnivariateGaussian(torch.tensor(self.PRIOR_MU), torch.tensor(self.PRIOR_PI), torch.tensor(self.PRIOR_SIGMA_1), torch.tensor(self.PRIOR_SIGMA_2))
 
         # ---
 
