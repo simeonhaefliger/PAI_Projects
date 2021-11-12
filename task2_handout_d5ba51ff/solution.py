@@ -192,13 +192,13 @@ class BayesianLayer(nn.Module):
     PRIOR_SIGMA_1 = 1
     PRIOR_SIGMA_2 = 0.00001
 
-    WEIGHT_MU_HIGH = 0
-    WEIGHT_MU_LOW = 0
+    WEIGHT_MU_HIGH = 0.1
+    WEIGHT_MU_LOW = -0.1
     WEIGHT_RHO_HIGH = math.log(math.exp(0.1) - 1)
     WEIGHT_RHO_LOW = math.log(math.exp(0.01) - 1)
 
-    BIAS_MU_HIGH = 0
-    BIAS_MU_LOW = 0
+    BIAS_MU_HIGH = 0.1
+    BIAS_MU_LOW = -0.1
     BIAS_RHO_HIGH = math.log(math.exp(0.1) - 1)
     BIAS_RHO_LOW = math.log(math.exp(0.01) - 1)
 
