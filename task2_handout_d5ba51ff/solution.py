@@ -135,8 +135,6 @@ class Model(object):
                     
                     loss = pi_i * (log_variational_posterior - log_prior) + F.nll_loss(pred, batch_y, reduction='sum')
 
-
-
                     loss.backward()
                    
                     # for param in self.network.parameters(): #named_parameters():
@@ -188,6 +186,7 @@ class BayesianLayer(nn.Module):
     """
 
     PRIOR_MU = 0
+
     PRIOR_PI = 0.5
     PRIOR_SIGMA_1 = 1
     PRIOR_SIGMA_2 = PRIOR_SIGMA_1 #0.00001 # Set this to PRIOR_SIGMA_1 if no mixture required
@@ -199,6 +198,7 @@ class BayesianLayer(nn.Module):
 
     BIAS_MU_HIGH = 0.1
     BIAS_MU_LOW = -0.1
+
     BIAS_RHO_HIGH = math.log(math.exp(0.1) - 1)
     BIAS_RHO_LOW = math.log(math.exp(0.01) - 1)
 
@@ -227,8 +227,6 @@ class BayesianLayer(nn.Module):
             self.prior = UnivariateGaussian(torch.tensor(self.PRIOR_MU), torch.tensor(self.PRIOR_SIGMA_1))
         else:
             self.prior = MixedUnivariateGaussian(torch.tensor(self.PRIOR_MU), torch.tensor(self.PRIOR_PI), torch.tensor(self.PRIOR_SIGMA_1), torch.tensor(self.PRIOR_SIGMA_2))
-
-        # ---
 
         assert isinstance(self.prior, ParameterDistribution)
         assert not any(True for _ in self.prior.parameters()), 'Prior cannot have parameters'
@@ -401,6 +399,9 @@ class UnivariateGaussian(ParameterDistribution):
         self.mu = mu
         self.sigma = sigma
 
+        #SHA
+        self.dist = torch.distributions.Normal(self.mu, self.sigma)
+
     def log_likelihood(self, values: torch.Tensor) -> torch.Tensor:
         # TODO: Implement this
         # return torch.distributions.Normal(self.mu, self.sigma).log_prob(values).sum()
@@ -411,7 +412,6 @@ class UnivariateGaussian(ParameterDistribution):
     def sample(self) -> torch.Tensor:
         # TODO: Implement this
         return self.mu + self.sigma * torch.randn_like(self.mu)
-
 
 class MixedUnivariateGaussian(ParameterDistribution):
     """
